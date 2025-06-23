@@ -9,6 +9,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  output: "export",
+  trailingSlash: true,
+  basePath:
+    process.env.NODE_ENV === "production" ? "/warehouse-3d-management" : "",
+  assetPrefix:
+    process.env.NODE_ENV === "production" ? "/warehouse-3d-management/" : "",
+};
 
-export default nextConfig
+export default nextConfig;

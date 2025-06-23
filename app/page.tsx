@@ -1,24 +1,72 @@
 "use client"
 
-import { useState, useRef, useMemo, useEffect } from "react"
-import { Canvas } from "@react-three/fiber"
-import { OrbitControls, Text, Box, Environment, Html } from "@react-three/drei"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Upload, Download, Eye, Package, MapPin, Plus } from "lucide-react"
+import { Box, Html, OrbitControls, Text } from "@react-three/drei"
+import { Canvas } from "@react-three/fiber"
+import { Download, Eye, MapPin, Package, Plus, Search, Upload } from "lucide-react"
+import { Component, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import type * as THREE from "three"
 
-import { PalletModal } from "@/components/pallet-modal"
 import { PalletForm } from "@/components/pallet-form"
+import { PalletModal } from "@/components/pallet-modal"
 import { ProductForm } from "@/components/product-form"
 
-// Add this declaration after the imports
+// Extend window type for global functions
 declare global {
   interface Window {
     handleEditPalletFromSlot?: (pallet: PalletData) => void
+  }
+}
+
+// Error Boundary for 3D Canvas
+class Canvas3DErrorBoundary extends Component<
+  { children: React.ReactNode; fallback?: React.ReactNode; onError?: () => void },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode; fallback?: React.ReactNode; onError?: () => void }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('3D Canvas Error:', error, errorInfo)
+    this.props.onError?.()
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="h-full flex items-center justify-center bg-gray-100">
+          <div className="text-center p-8">
+            <div className="text-gray-500 mb-4">
+              <Package className="h-16 w-16 mx-auto mb-4" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">3D View Error</h3>
+            <p className="text-gray-600 mb-4">
+              There was an error loading the 3D visualization.
+            </p>
+            <p className="text-sm text-gray-500">
+              Please refresh the page or try a different browser.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
   }
 }
 
@@ -73,8 +121,31 @@ interface PalletData {
   notes: string
 }
 
+// Simple seeded random number generator for consistent data generation
+class SeededRandom {
+  private seed: number
+
+  constructor(seed: number) {
+    this.seed = seed
+  }
+
+  next(): number {
+    this.seed = (this.seed * 9301 + 49297) % 233280
+    return this.seed / 233280
+  }
+
+  nextInt(max: number): number {
+    return Math.floor(this.next() * max)
+  }
+
+  nextInRange(min: number, max: number): number {
+    return min + this.next() * (max - min)
+  }
+}
+
 // Sample data
 const generateWarehouseData = (): SlotData[] => {
+  const rng = new SeededRandom(12345) // Fixed seed for consistent results
   const slots: SlotData[] = []
   const aisles = ["A", "B", "C", "D"]
   const baysPerAisle = 8
@@ -88,12 +159,12 @@ const generateWarehouseData = (): SlotData[] => {
         const y = level * 1.5 - 0.5
 
         const slotId = `${aisle}${bay.toString().padStart(2, "0")}${level}`
-        const occupied = Math.random() > 0.3
+        const occupied = rng.next() > 0.3
 
         let pallet: PalletData | undefined
         if (occupied) {
           const statuses: PalletData["status"][] = ["normal", "expiring", "expired", "processing", "reserved"]
-          const status = statuses[Math.floor(Math.random() * statuses.length)]
+          const status = statuses[rng.nextInt(statuses.length)]
           const colors = {
             normal: "#4ade80",
             expiring: "#fbbf24",
@@ -103,11 +174,11 @@ const generateWarehouseData = (): SlotData[] => {
           }
 
           pallet = {
-            id: `P${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-            productCode: `PROD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-            quantity: Math.floor(Math.random() * 100) + 1,
-            entryDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-            expiryDate: new Date(Date.now() + Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+            id: `P${rng.nextInt(1000000).toString(16).toUpperCase()}`,
+            productCode: `PROD-${rng.nextInt(10000).toString(16).toUpperCase()}`,
+            quantity: rng.nextInt(100) + 1,
+            entryDate: new Date(Date.now() - rng.nextInt(30 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0],
+            expiryDate: new Date(Date.now() + rng.nextInt(90 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0],
             status,
             color: colors[status],
             products: [],
@@ -118,44 +189,31 @@ const generateWarehouseData = (): SlotData[] => {
           }
 
           // Generate sample products for each pallet
-          const productCount = Math.floor(Math.random() * 3) + 1
+          const productCount = rng.nextInt(3) + 1
           const products: ProductData[] = []
 
           for (let i = 0; i < productCount; i++) {
             products.push({
-              id: `PROD-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+              id: `PROD-${rng.nextInt(1000000).toString(16).toUpperCase()}`,
               name: `Product ${i + 1}`,
-              sku: `SKU-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-              quantity: Math.floor(Math.random() * 50) + 1,
-              unitPrice: Math.floor(Math.random() * 100) + 10,
-              category: ["Electronics", "Clothing", "Food", "Tools", "Books"][Math.floor(Math.random() * 5)],
+              sku: `SKU-${rng.nextInt(1000000).toString(16).toUpperCase()}`,
+              quantity: rng.nextInt(50) + 1,
+              unitPrice: rng.nextInt(100) + 10,
+              category: ["Electronics", "Clothing", "Food", "Tools", "Books"][rng.nextInt(5)],
               description: `Description for product ${i + 1}`,
-              batchNumber: `BATCH-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-              manufacturingDate: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000)
+              batchNumber: `BATCH-${rng.nextInt(10000).toString(16).toUpperCase()}`,
+              manufacturingDate: new Date(Date.now() - rng.nextInt(60 * 24 * 60 * 60 * 1000))
                 .toISOString()
                 .split("T")[0],
-              expiryDate: new Date(Date.now() + Math.random() * 180 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+              expiryDate: new Date(Date.now() + rng.nextInt(180 * 24 * 60 * 60 * 1000)).toISOString().split("T")[0],
             })
           }
 
-          pallet = {
-            id: `P${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
-            productCode: `PROD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
-            quantity: Math.floor(Math.random() * 100) + 1,
-            entryDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-            expiryDate: new Date(Date.now() + Math.random() * 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-            status,
-            color: colors[status],
-            products,
-            weight: Math.floor(Math.random() * 500) + 100,
-            dimensions: {
-              length: 120,
-              width: 100,
-              height: 80,
-            },
-            supplier: ["Supplier A", "Supplier B", "Supplier C"][Math.floor(Math.random() * 3)],
-            notes: "Sample pallet notes",
-          }
+          // Update the existing pallet with the generated products and other properties
+          pallet.products = products
+          pallet.weight = rng.nextInt(500) + 100
+          pallet.supplier = ["Supplier A", "Supplier B", "Supplier C"][rng.nextInt(3)]
+          pallet.notes = "Sample pallet notes"
         }
 
         slots.push({
@@ -224,7 +282,7 @@ function Slot({
                 onClick={(e) => {
                   e.stopPropagation()
                   // We need to pass this up to the parent component
-                  if (window.handleEditPalletFromSlot) {
+                  if (window.handleEditPalletFromSlot && slot.pallet) {
                     window.handleEditPalletFromSlot(slot.pallet)
                   }
                 }}
@@ -282,32 +340,212 @@ function Warehouse3D({
   slots,
   selectedSlot,
   onSlotSelect,
+  onError,
+}: {
+  slots: SlotData[]
+  selectedSlot: SlotData | null
+  onSlotSelect: (slot: SlotData) => void
+  onError?: () => void
+}) {
+  const [hasWebGL, setHasWebGL] = useState(true)
+  const [canvasError, setCanvasError] = useState<string | null>(null)
+  const [isClient, setIsClient] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Ensure we're on the client side
+  useEffect(() => {
+    setIsClient(true)
+    // Add a small delay to ensure DOM is ready
+    const timer = setTimeout(() => {
+      setIsLoading(false)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Check WebGL support
+  useEffect(() => {
+    if (!isClient) return
+    
+    try {
+      const canvas = document.createElement('canvas')
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+      if (!gl) {
+        setHasWebGL(false)
+        setCanvasError('WebGL is not supported in your browser')
+      }
+    } catch (e) {
+      console.error('WebGL check failed:', e)
+      setHasWebGL(false)
+      setCanvasError('WebGL is not supported in your browser')
+      onError?.()
+    }
+  }, [isClient, onError])
+
+  // Show loading state while checking client-side capabilities
+  if (!isClient || isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Initializing 3D view...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!hasWebGL || canvasError) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-100">
+        <div className="text-center p-8">
+          <div className="text-gray-500 mb-4">
+            <Package className="h-16 w-16 mx-auto mb-4" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">3D View Not Available</h3>
+          <p className="text-gray-600 mb-4">
+            {canvasError || 'Your browser does not support WebGL, which is required for 3D visualization.'}
+          </p>
+          <p className="text-sm text-gray-500">
+            Please use a modern browser like Chrome, Firefox, Safari, or Edge.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full" style={{ minHeight: '600px' }}>
+      <Canvas 
+        camera={{ position: [15, 10, 15], fov: 60 }}
+        dpr={[1, 2]}
+        performance={{ min: 0.5 }}
+        onCreated={({ gl, scene, camera }) => {
+          try {
+            gl.setClearColor('#f8fafc')
+            gl.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+            // Ensure camera is properly positioned
+            camera.position.set(15, 10, 15)
+            camera.lookAt(0, 0, 0)
+          } catch (error) {
+            console.error('Canvas setup error:', error)
+            setCanvasError('Failed to initialize 3D renderer')
+          }
+        }}
+        onError={(error) => {
+          console.error('Canvas error:', error)
+          setCanvasError('Failed to load 3D view')
+          onError?.()
+        }}
+        fallback={
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading 3D view...</p>
+            </div>
+          </div>
+        }
+      >
+        <ambientLight intensity={0.6} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+        
+        <WarehouseFloor />
+        <AisleLabels />
+
+        {slots.map((slot) => (
+          <Slot key={slot.id} slot={slot} isSelected={selectedSlot?.id === slot.id} onSelect={onSlotSelect} />
+        ))}
+
+        <OrbitControls 
+          enablePan={true} 
+          enableZoom={true} 
+          enableRotate={true} 
+          maxPolarAngle={Math.PI / 2}
+          minDistance={5}
+          maxDistance={50}
+          enableDamping={true}
+          dampingFactor={0.05}
+        />
+      </Canvas>
+    </div>
+  )
+}
+
+// 2D Fallback View
+function Warehouse2D({
+  slots,
+  selectedSlot,
+  onSlotSelect,
 }: {
   slots: SlotData[]
   selectedSlot: SlotData | null
   onSlotSelect: (slot: SlotData) => void
 }) {
+  const aisles = useMemo(() => {
+    const grouped = slots.reduce((acc, slot) => {
+      if (!acc[slot.aisle]) acc[slot.aisle] = []
+      acc[slot.aisle].push(slot)
+      return acc
+    }, {} as Record<string, SlotData[]>)
+    
+    // Sort slots within each aisle by bay and level
+    Object.keys(grouped).forEach(aisle => {
+      grouped[aisle].sort((a, b) => {
+        if (a.bay !== b.bay) return a.bay.localeCompare(b.bay)
+        return a.level - b.level
+      })
+    })
+    
+    return grouped
+  }, [slots])
+
   return (
-    <Canvas camera={{ position: [15, 10, 15], fov: 60 }}>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 10, 5]} intensity={1} />
-      <Environment preset="warehouse" />
-
-      <WarehouseFloor />
-      <AisleLabels />
-
-      {slots.map((slot) => (
-        <Slot key={slot.id} slot={slot} isSelected={selectedSlot?.id === slot.id} onSelect={onSlotSelect} />
-      ))}
-
-      <OrbitControls enablePan={true} enableZoom={true} enableRotate={true} maxPolarAngle={Math.PI / 2} />
-    </Canvas>
+    <div className="h-full w-full overflow-auto p-4 bg-gray-50">
+      <div className="space-y-6">
+        {Object.entries(aisles).map(([aisleName, aisleSlots]) => (
+          <div key={aisleName} className="bg-white rounded-lg p-4 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">Aisle {aisleName}</h3>
+            <div className="grid grid-cols-8 gap-2">
+              {aisleSlots.map((slot) => (
+                <div
+                  key={slot.id}
+                  onClick={() => onSlotSelect(slot)}
+                  className={`
+                    relative h-12 w-12 rounded border-2 cursor-pointer transition-all
+                    ${selectedSlot?.id === slot.id 
+                      ? 'border-blue-500 ring-2 ring-blue-200' 
+                      : 'border-gray-300 hover:border-gray-400'
+                    }
+                  `}
+                  style={{
+                    backgroundColor: slot.occupied 
+                      ? slot.pallet?.color || '#6b7280'
+                      : '#ffffff'
+                  }}
+                  title={`${slot.location} - ${slot.occupied ? `${slot.pallet?.productCode} (${slot.pallet?.status})` : 'Empty'}`}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-xs font-medium text-gray-700">
+                      {slot.location}
+                    </span>
+                  </div>
+                  {slot.occupied && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full border border-white"
+                         style={{ backgroundColor: slot.pallet?.color }}>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
 // Main Component
 export default function WarehouseManagement() {
-  const [slots, setSlots] = useState<SlotData[]>(() => generateWarehouseData())
+  const [slots, setSlots] = useState<SlotData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [selectedSlot, setSelectedSlot] = useState<SlotData | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -318,7 +556,15 @@ export default function WarehouseManagement() {
   const [showProductForm, setShowProductForm] = useState(false)
   const [editingPallet, setEditingPallet] = useState<PalletData | null>(null)
   const [editingProduct, setEditingProduct] = useState<ProductData | null>(null)
+
+  // Initialize warehouse data on client side only
+  useEffect(() => {
+    setSlots(generateWarehouseData())
+    setIsLoading(false)
+  }, [])
   const [selectedPalletForProducts, setSelectedPalletForProducts] = useState<PalletData | null>(null)
+  const [use3DView, setUse3DView] = useState(true)
+  const [canvas3DError, setCanvas3DError] = useState(false)
 
   // Add this useEffect near the top of the component, after the state declarations
   useEffect(() => {
@@ -507,6 +753,18 @@ export default function WarehouseManagement() {
     setSelectedPalletForProducts(updatedPallet)
     setShowProductForm(false)
     setEditingProduct(null)
+  }
+
+  // Show loading state while data is being generated
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading warehouse data...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -736,15 +994,62 @@ export default function WarehouseManagement() {
               <CardHeader>
                 <CardTitle className="text-lg flex items-center">
                   <Eye className="h-5 w-5 mr-2" />
-                  3D Warehouse View
-                  <span className="ml-auto text-sm font-normal text-gray-500">
+                  {use3DView ? '3D' : '2D'} Warehouse View
+                  <span className="ml-auto text-sm font-normal text-gray-500 mr-4">
                     Showing {filteredSlots.length} of {slots.length} slots
                   </span>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant={use3DView ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUse3DView(true)}
+                      disabled={canvas3DError}
+                    >
+                      3D
+                    </Button>
+                    <Button
+                      variant={!use3DView ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setUse3DView(false)}
+                    >
+                      2D
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="h-full p-0">
                 <div className="h-full w-full">
-                  <Warehouse3D slots={filteredSlots} selectedSlot={selectedSlot} onSlotSelect={handleSlotSelect} />
+                  {use3DView && !canvas3DError ? (
+                    <Canvas3DErrorBoundary onError={() => {
+                      setCanvas3DError(true)
+                      setUse3DView(false)
+                    }}>
+                      <Suspense fallback={
+                        <div className="h-full flex items-center justify-center">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Loading 3D view...</p>
+                          </div>
+                        </div>
+                      }>
+                        <Warehouse3D 
+                          slots={filteredSlots} 
+                          selectedSlot={selectedSlot} 
+                          onSlotSelect={handleSlotSelect}
+                          onError={() => {
+                            setCanvas3DError(true)
+                            setUse3DView(false)
+                          }}
+                        />
+                      </Suspense>
+                    </Canvas3DErrorBoundary>
+                  ) : (
+                    <Warehouse2D
+                      slots={filteredSlots}
+                      selectedSlot={selectedSlot}
+                      onSlotSelect={handleSlotSelect}
+                    />
+                  )}
                 </div>
               </CardContent>
             </Card>
