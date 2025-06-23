@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       pages: write
       id-token: write
 
@@ -23,47 +23,21 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "18"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 8
-
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          cache: "npm"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
-      - name: Lint
-        run: pnpm lint
+      # - name: Lint
+      #   run: npm run lint
 
       - name: Build
-        run: pnpm build
+        run: npm run build
         env:
           NODE_ENV: production
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        with:
-          static_site_generator: next
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./out
-
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4.0.0 # dùng cái này để deploy lên github pages
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} # token sẽ tự generate ra
+          publish_dir: ./out # thư mục chứa file build web

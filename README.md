@@ -14,7 +14,7 @@ A Next.js application for 3D warehouse management with modern UI components.
 ### Prerequisites
 
 - Node.js 18 or higher
-- pnpm (recommended) or npm
+- npm
 
 ### Installation
 
@@ -28,24 +28,24 @@ cd warehouse-3d-management
 2. Install dependencies:
 
 ```bash
-pnpm install
+npm install
 ```
 
 3. Run the development server:
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 ## Scripts
 
-- `pnpm dev` - Start development server
-- `pnpm build` - Build for production
-- `pnpm start` - Start production server
-- `pnpm lint` - Run ESLint
-- `pnpm export` - Build and export static files
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run export` - Build and export static files
 
 ## Deployment
 
@@ -101,7 +101,7 @@ The static files will be generated in the `out` directory.
 - **Styling:** Tailwind CSS
 - **UI Components:** Radix UI
 - **3D Graphics:** React Three Fiber
-- **Package Manager:** pnpm
+- **Package Manager:** npm
 - **Deployment:** GitHub Pages
 
 ## Contributing
